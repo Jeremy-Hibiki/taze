@@ -13,7 +13,9 @@ interface Packument {
    * An object where each key is a version, and each value is the manifest for
    * that version.
    */
-  'versions': Record<string, Omit<Packument, 'versions'>>
+  'versions': Record<string, Omit<Packument, 'versions'> & {
+    deprecated?: string
+  }>
   /**
    * An object mapping dist-tags to version numbers. This is how `foo@latest`
    * gets turned into `foo@1.2.3`.
@@ -58,19 +60,24 @@ export async function fetchPackage(spec: string, npmConfigs: Record<string, unkn
       throw new Error(`Failed to fetch package "${spec}": ${data.error}`)
     }
 
+    const nonDeprecatedVersionsMeta = Object.fromEntries(
+      Object.entries(data.versionsMeta)
+        .filter(([_, meta]) => !meta.deprecated),
+    )
+
     return {
       tags: data.distTags,
-      versions: Object.keys(data.versionsMeta),
+      versions: Object.keys(nonDeprecatedVersionsMeta),
       time: {
         ...Object.fromEntries(
-          Object.entries(data.versionsMeta)
+          Object.entries(nonDeprecatedVersionsMeta)
             .map(([version, meta]) => [version, meta.time]),
         ),
         created: data.timeCreated,
         modified: data.timeModified,
       },
       nodeSemver: { ...Object.fromEntries(
-        Object.entries(data.versionsMeta)
+        Object.entries(nonDeprecatedVersionsMeta)
           .map(([version, meta]) => [version, meta.engines?.node])
           .filter(([_, node]) => node),
       ) },
@@ -95,9 +102,13 @@ export async function fetchPackage(spec: string, npmConfigs: Record<string, unkn
     ),
   ])
 
+  const nonDeprecatedPackumentVersions = Object.entries(packument.versions)
+    .filter(([_, version]) => !version.deprecated)
+    .map(([version]) => version)
+
   return {
     ...packument,
     tags: packument['dist-tags'],
-    versions: Object.keys(packument.versions),
+    versions: nonDeprecatedPackumentVersions,
   }
 }
